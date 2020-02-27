@@ -31,27 +31,37 @@ namespace wol
                 Stats stats = new Stats();
 
                 IEnumerable<byte[]> MACs = ParseMACs(Misc.ConcatFilecontentAndOneValue(opts.MAC, opts.FilenameMacAddresses),
-                                                                    OnParseError: (string MAC) => stats.errors++);
+                                                OnParseError: (string MAC) => stats.errors++);
 
-                List<IPEndPoint> broadcastIPs = ParseIPs(Misc.ConcatFilecontentAndOneValue(opts.broadcastIP, opts.FilenameBroadcastIPs),
-                                                                    OnParseError: (string IP) => stats.errors++)
-                                                      .Select(ip => new IPEndPoint(ip, WOL_UDP_PORT)).ToList();
+                IEnumerable<IPAddress> broadcastIPsFromCidrs = ParseCIDRs(Misc.ConcatFilecontentAndOneValue(opts.cidr, opts.FilenameCIDRs),
+                                                        OnParseError: (string CIDR) => stats.errors++);
+
+                IEnumerable<IPAddress> broadcastIPsFromFile = ParseIPs(Misc.ConcatFilecontentAndOneValue(opts.broadcastIP, opts.FilenameBroadcastIPs),
+                                                                    OnParseError: (string IP) => stats.errors++);
+                                                      
+
+                List<IPEndPoint> broadcastEndpoints = broadcastIPsFromCidrs.Concat(broadcastIPsFromFile)
+                    .Select(ip => new IPEndPoint(ip, WOL_UDP_PORT)).ToList();
 
                 if (opts.verbose)
                 {
-                    Console.WriteLine($"sending each MAC to {broadcastIPs.Count} IPs");
+                    foreach (var ip in broadcastEndpoints )
+                    {
+                        Console.WriteLine($"broadcast IP: {ip}");
+                    }
+                    Console.WriteLine($"sending each MAC to {broadcastEndpoints.Count} IPs");
                 }
 
-                CreateSockets(broadcastIPs, out UdpClient v4Socket, out UdpClient v6Socket, opts.verbose);
+                CreateSockets(broadcastEndpoints, out UdpClient v4Socket, out UdpClient v6Socket, opts.verbose);
 
                 DateTime start = DateTime.Now;
-                SendToAllNets(opts, stats, MACs, broadcastIPs, v4Socket, v6Socket);
+                SendToAllNets(opts, stats, MACs, broadcastEndpoints, v4Socket, v6Socket);
                 TimeSpan duration = DateTime.Now - start;
 
                 if (v4Socket != null) v4Socket.Close();
                 if (v6Socket != null) v6Socket.Close();
 
-                WriteStats(stats, broadcastIPs.Count, duration);
+                WriteStats(stats, broadcastEndpoints.Count, duration);
 
                 return stats.errors == 0 ? 0 : 8;
             }
@@ -60,6 +70,29 @@ namespace wol
                 Console.Error.WriteLine(ex.Message);
                 Console.Error.WriteLine(ex.StackTrace);
                 return 12;
+            }
+        }
+
+        private static IEnumerable<IPAddress> ParseCIDRs(IEnumerable<string> CIDRs, Action<string> OnParseError)
+        {
+            foreach (string cidr in CIDRs)
+            {
+                IPAddress broadcast = null;
+
+                try
+                {
+                    var network = IPNetwork.Parse(cidr);
+                    broadcast = network.Broadcast;
+                }
+                catch (Exception ex)
+                {
+                    Console.Error.WriteLine($"");
+                }
+
+                if (broadcast != null)
+                {
+                    yield return broadcast;
+                }
             }
         }
 

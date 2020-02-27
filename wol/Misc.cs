@@ -39,7 +39,10 @@ namespace Spi
             {
                 foreach (string line in File.ReadLines(filename))
                 {
-                    yield return line;
+                    if (!String.IsNullOrWhiteSpace(line))
+                    {
+                        yield return line;
+                    }
                 }
             }
         }
