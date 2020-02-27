@@ -1,11 +1,9 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.IO;
 using System.Linq;
 using System.Net;
 using System.Net.NetworkInformation;
 using System.Net.Sockets;
-using System.Text;
 
 using Spi;
 
@@ -130,40 +128,20 @@ namespace wol
             {
                 stats.numberMACs += 1;
 
-                // MAC addresses are 6-byte (48-bits) in length
                 foreach (var broadcastIP in broadcastIPs)
                 {
+                    // copy MAC address 16times to the buffer. offset 6!
+                    // MAC addresses are 6-byte (48-bits) in length
                     for (int i = 0; i < 16; i++)
                     {
                         mac.CopyTo(buffer, 6 + i * 6);
                     }
-                    UdpClient socketToUse = null;
-                    if (broadcastIP.AddressFamily == AddressFamily.InterNetwork && v4Socket != null)
-                    {
-                        socketToUse = v4Socket;
-                    }
-                    else if (broadcastIP.AddressFamily == AddressFamily.InterNetworkV6 && v6Socket != null) 
-                    {
-                        socketToUse = v6Socket;
-                    }
+
+                    UdpClient socketToUse = GetSocketForAdressFamily(v4Socket, v6Socket, broadcastIP);
 
                     if (socketToUse != null)
                     {
-                        try
-                        {
-                            socketToUse.Send(buffer, buffer.Length, broadcastIP);
-                            ++stats.sentPackets;
-                        }
-                        catch (SocketException sox)
-                        {
-                            ++stats.errors;
-                            Console.Error.WriteLine(sox.Message);
-                        }
-                        catch (InvalidOperationException ioex)
-                        {
-                            ++stats.errors;
-                            Console.Error.WriteLine(ioex.Message);
-                        }
+                        SendWOLpacket(stats, buffer, broadcastIP, socketToUse);
                     }
                 }
 
@@ -173,6 +151,40 @@ namespace wol
                 }
             }
         }
+        private static void SendWOLpacket(Stats stats, byte[] buffer, IPEndPoint broadcastIP, UdpClient socketToUse)
+        {
+            try
+            {
+                socketToUse.Send(buffer, buffer.Length, broadcastIP);
+                ++stats.sentPackets;
+            }
+            catch (SocketException sox)
+            {
+                ++stats.errors;
+                Console.Error.WriteLine(sox.Message);
+            }
+            catch (InvalidOperationException ioex)
+            {
+                ++stats.errors;
+                Console.Error.WriteLine(ioex.Message);
+            }
+        }
+
+        private static UdpClient GetSocketForAdressFamily(UdpClient v4Socket, UdpClient v6Socket, IPEndPoint broadcastIP)
+        {
+            UdpClient socketToUse = null;
+            if (broadcastIP.AddressFamily == AddressFamily.InterNetwork && v4Socket != null)
+            {
+                socketToUse = v4Socket;
+            }
+            else if (broadcastIP.AddressFamily == AddressFamily.InterNetworkV6 && v6Socket != null)
+            {
+                socketToUse = v6Socket;
+            }
+
+            return socketToUse;
+        }
+
         private static IEnumerable<IPAddress> ParseIPs(IEnumerable<string> IPs, Action<string> OnParseError)
         {
             foreach (string stringIP in IPs)
