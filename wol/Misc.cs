@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Runtime.InteropServices;
 using System.Text;
@@ -26,5 +27,22 @@ namespace Spi
                long fileSize
                , [MarshalAs(UnmanagedType.LPTStr)] StringBuilder buffer
                , int bufferSize);
+
+        public static IEnumerable<string> ConcatFilecontentAndOneValue(string value, string filename)
+        {
+            if (!String.IsNullOrEmpty(value))
+            {
+                yield return value;
+            }
+
+            if (!String.IsNullOrEmpty(filename))
+            {
+                foreach (string line in File.ReadLines(filename))
+                {
+                    yield return line;
+                }
+            }
+        }
+
     }
 }

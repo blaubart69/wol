@@ -7,6 +7,8 @@ using System.Net.NetworkInformation;
 using System.Net.Sockets;
 using System.Text;
 
+using Spi;
+
 namespace wol
 {
     class Stats
@@ -17,6 +19,7 @@ namespace wol
     }
     class Program
     {
+        const int WOL_UDP_PORT = 7;
         static int Main(string[] args)
         {
             Opts opts;
@@ -27,8 +30,12 @@ namespace wol
 
             Stats stats = new Stats();
 
-            IEnumerable<byte[]> MACs = GetMACs(opts.MAC, opts.FilenameMacAddresses);
-            List<IPEndPoint> broadcastIPs = GetIPs(opts.broadcastIP, opts.FilenameBroadcastIPs).Select(ip => new IPEndPoint(ip, 7)).ToList();
+            IEnumerable<byte[]> MACs            = ParseMACs( Misc.ConcatFilecontentAndOneValue(opts.MAC, opts.FilenameMacAddresses),
+                                                                OnParseError: (string MAC) => stats.errors++ );
+
+            List<IPEndPoint>    broadcastIPs    = ParseIPs ( Misc.ConcatFilecontentAndOneValue(opts.broadcastIP, opts.FilenameBroadcastIPs),
+                                                                OnParseError: (string IP) => stats.errors++)
+                                                  .Select(ip => new IPEndPoint(ip, WOL_UDP_PORT)).ToList();
             
             if (opts.verbose)
             {
@@ -63,12 +70,15 @@ namespace wol
 
                 foreach (byte[] mac in MACs)
                 {
-                    if (mac == null)
+                    // MAC addresses are 6-byte (48-bits) in length
+                    foreach (var broadcastIP in broadcastIPs)
                     {
-                        stats.errors++;
-                        continue;
+                        for (int i = 0; i < 16; i++)
+                        {
+                            mac.CopyTo(buffer, 6 + i * 6);
+                        }
+                        udpClient.Send(buffer, buffer.Length, broadcastIP);
                     }
-                    SendToNets(udpClient, ref buffer, mac, broadcastIPs);
                     stats.sentPackets += broadcastIPs.Count;
                     stats.numberMACs += 1;
 
@@ -79,79 +89,60 @@ namespace wol
                 }
             }
         }
-
-        private static void SendToNets(UdpClient udpClient, ref byte[] buffer, in byte[] mac, List<IPEndPoint> broadcastIPs)
+        private static IEnumerable<IPAddress> ParseIPs(IEnumerable<string> IPs, Action<string> OnParseError)
         {
-
-            // MAC addresses are 6-byte (48-bits) in length
-            foreach ( var ip in broadcastIPs )
+            foreach (string stringIP in IPs)
             {
-                for (int i = 0; i < 16; i++)
+                IPAddress ip = null;
+                try
                 {
-                    mac.CopyTo(buffer, 6 + i * 6);
+                    ip = IPAddress.Parse(stringIP);
                 }
-
-                udpClient.Send(buffer, buffer.Length, ip);
+                catch (FormatException fex)
+                {
+                    Console.Error.WriteLine($"E: IP [{stringIP}] could not be parsed. [{fex.Message}]");
+                }
+                if (ip != null)
+                {
+                    yield return ip;
+                }
+                else
+                {
+                    OnParseError?.Invoke(stringIP);
+                }
             }
         }
-        private static IEnumerable<IPAddress> GetIPs(string broadcastIP, string filenameBroadcastIPs)
+        private static IEnumerable<byte[]> ParseMACs(IEnumerable<string> stringMACs, Action<string> OnParseError)
         {
-            if ( !String.IsNullOrEmpty(broadcastIP) )
+            foreach ( string stringMAC in stringMACs)
             {
-                yield return IPAddress.Parse(broadcastIP);
-            }
+                byte[] parsedMAC = null;
 
-            if ( !String.IsNullOrEmpty(filenameBroadcastIPs) )
-            {
-                using (TextReader rdr = new StreamReader(filenameBroadcastIPs))
+                string tmpMAC = stringMAC.ToUpper().Replace(":", "-");
+                try
                 {
-                    string line;
-                    while ((line = rdr.ReadLine()) != null)
+                    parsedMAC = PhysicalAddress.Parse(tmpMAC).GetAddressBytes();
+                    if (parsedMAC.Length != 6)
                     {
-                        yield return IPAddress.Parse(line);
+                        Console.Error.WriteLine($"E: MAC [{stringMAC}] has a length of {parsedMAC.Length}. Should be 6.");
+                        parsedMAC = null;
                     }
                 }
-            }
-        }
-
-        private static IEnumerable<byte[]> GetMACs(string MAC, string filenameMacAddresses)
-        {
-            if (!String.IsNullOrEmpty(MAC))
-            {
-                yield return StringToMAC(MAC);
-            }
-            
-            if ( !String.IsNullOrEmpty(filenameMacAddresses) )
-            {
-                using (TextReader rdr = new StreamReader(filenameMacAddresses))
+                catch (FormatException fex)
                 {
-                    string line;
-                    while ((line=rdr.ReadLine()) != null)
-                    {
-                        yield return StringToMAC(line);
-                    }
+                    Console.Error.WriteLine($"E: MAC [{stringMAC}] could not be parsed. Was transformed to [{tmpMAC}]. Exception: {fex.Message}");
+                    parsedMAC = null;
+                }
+
+                if ( parsedMAC != null )
+                {
+                    yield return parsedMAC;
+                }
+                else
+                {
+                    OnParseError?.Invoke(stringMAC);
                 }
             }
-        }
-
-        private static byte[] StringToMAC(string MAC)
-        {
-            string tmpMAC = MAC.ToUpper().Replace(":", "-");
-            try
-            {
-                byte[] macBytes = PhysicalAddress.Parse(tmpMAC).GetAddressBytes();
-                if ( macBytes.Length != 6 )
-                {
-                    Console.Error.WriteLine($"MAC [{MAC}] has a length of {macBytes.Length}. Should be 6.");
-                    return null;
-                }
-                return macBytes;
-            }
-            catch (FormatException fex)
-            {
-                Console.Error.WriteLine($"MAC [{MAC}] could not be parsed. Was transformed to [{tmpMAC}]. Exception: {fex.Message}");
-            }
-            return null;
         }
     }
 }
