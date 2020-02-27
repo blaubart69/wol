@@ -52,7 +52,6 @@ namespace wol
                             ++stats.errors;
                             Console.Error.WriteLine($"could not parse IP [{IP}]. [{message}]");
                         });
-                                                      
 
                 List<IPEndPoint> broadcastEndpoints = broadcastIPsFromCidrs.Concat(broadcastIPsFromFile)
                     .Select(ip => new IPEndPoint(ip, WOL_UDP_PORT)).ToList();
@@ -69,7 +68,10 @@ namespace wol
                 CreateSockets(broadcastEndpoints, out UdpClient v4Socket, out UdpClient v6Socket, opts.verbose);
 
                 DateTime start = DateTime.Now;
-                SendToAllNets(opts, stats, MACs, broadcastEndpoints, v4Socket, v6Socket);
+                stats.numberMACs =
+                    wol.SendToAllNets(MACs, broadcastEndpoints, v4Socket, v6Socket,
+                    onSendSuccessfull: (in byte[] mac, in IPEndPoint target)                  => { ++stats.sentPackets; },
+                    onSendError:       (in byte[] mac, in IPEndPoint target, in string error) => { ++stats.errors; Console.Error.WriteLine($"error sending to {target}\t[{error}]"); });
                 TimeSpan duration = DateTime.Now - start;
 
                 if (v4Socket != null) v4Socket.Close();
@@ -118,74 +120,6 @@ namespace wol
             {
                 v6Socket = createSocket(AddressFamily.InterNetworkV6);
             }
-        }
-        private static void SendToAllNets(Opts opts, Stats stats, IEnumerable<byte[]> MACs, List<IPEndPoint> broadcastIPs, UdpClient v4Socket, UdpClient v6Socket)
-        {
-            byte[] buffer = new byte[6 + 16 * 6];
-
-            for (int i = 0; i < 6; ++i)
-            {
-                buffer[i] = 0xFF;
-            }
-
-            foreach (byte[] mac in MACs)
-            {
-                stats.numberMACs += 1;
-
-                foreach (var broadcastIP in broadcastIPs)
-                {
-                    // copy MAC address 16times to the buffer. offset 6!
-                    // MAC addresses are 6-byte (48-bits) in length
-                    for (int i = 0; i < 16; i++)
-                    {
-                        mac.CopyTo(buffer, 6 + i * 6);
-                    }
-
-                    UdpClient socketToUse = GetSocketForAdressFamily(v4Socket, v6Socket, broadcastIP);
-
-                    if (socketToUse != null)
-                    {
-                        SendWOLpacket(stats, buffer, broadcastIP, socketToUse);
-                    }
-                }
-
-                if (opts.verbose)
-                {
-                    Console.WriteLine(BitConverter.ToString(mac));
-                }
-            }
-        }
-        private static void SendWOLpacket(Stats stats, byte[] buffer, IPEndPoint broadcastIP, UdpClient socketToUse)
-        {
-            try
-            {
-                socketToUse.Send(buffer, buffer.Length, broadcastIP);
-                ++stats.sentPackets;
-            }
-            catch (SocketException sox)
-            {
-                ++stats.errors;
-                Console.Error.WriteLine(sox.Message);
-            }
-            catch (InvalidOperationException ioex)
-            {
-                ++stats.errors;
-                Console.Error.WriteLine(ioex.Message);
-            }
-        }
-        private static UdpClient GetSocketForAdressFamily(UdpClient v4Socket, UdpClient v6Socket, IPEndPoint broadcastIP)
-        {
-            UdpClient socketToUse = null;
-            if (broadcastIP.AddressFamily == AddressFamily.InterNetwork && v4Socket != null)
-            {
-                socketToUse = v4Socket;
-            }
-            else if (broadcastIP.AddressFamily == AddressFamily.InterNetworkV6 && v6Socket != null)
-            {
-                socketToUse = v6Socket;
-            }
-
-            return socketToUse;
         }
         private static void WriteStats(Stats stats, int numberSubnetIPs, TimeSpan duration)
         {
