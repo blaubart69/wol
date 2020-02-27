@@ -2,7 +2,6 @@
 using System.Collections.Generic;
 using System.Linq;
 using System.Net;
-using System.Net.NetworkInformation;
 using System.Net.Sockets;
 
 using Spi;
@@ -30,14 +29,29 @@ namespace wol
 
                 Stats stats = new Stats();
 
-                IEnumerable<byte[]> MACs = ParseMACs(Misc.ConcatFilecontentAndOneValue(opts.MAC, opts.FilenameMacAddresses),
-                                                OnParseError: (string MAC) => stats.errors++);
+                IEnumerable<byte[]> MACs = 
+                    Parse.MACs(Misc.ConcatFilecontentAndOneValue(opts.MAC, opts.FilenameMacAddresses),
+                        onParseError: (string MAC, string message) =>
+                        {
+                            ++stats.errors;
+                            Console.Error.WriteLine($"could not parse MAC [{MAC}]. [{message}]");
+                        });
 
-                IEnumerable<IPAddress> broadcastIPsFromCidrs = ParseCIDRs(Misc.ConcatFilecontentAndOneValue(opts.cidr, opts.FilenameCIDRs),
-                                                        OnParseError: (string CIDR) => stats.errors++);
+                IEnumerable<IPAddress> broadcastIPsFromCidrs = 
+                    Parse.CIDRs(Misc.ConcatFilecontentAndOneValue(opts.cidr, opts.FilenameCIDRs),
+                        onParseError: (string CIDR, string message) =>
+                        {
+                            ++stats.errors;
+                            Console.Error.WriteLine($"could not parse CIDR [{CIDR}]. [{message}]");
+                        });
 
-                IEnumerable<IPAddress> broadcastIPsFromFile = ParseIPs(Misc.ConcatFilecontentAndOneValue(opts.broadcastIP, opts.FilenameBroadcastIPs),
-                                                                    OnParseError: (string IP) => stats.errors++);
+                IEnumerable<IPAddress> broadcastIPsFromFile = 
+                    Parse.IPs(Misc.ConcatFilecontentAndOneValue(opts.broadcastIP, opts.FilenameBroadcastIPs),
+                        onParseError: (string IP, string message) =>
+                        { 
+                            ++stats.errors;
+                            Console.Error.WriteLine($"could not parse IP [{IP}]. [{message}]");
+                        });
                                                       
 
                 List<IPEndPoint> broadcastEndpoints = broadcastIPsFromCidrs.Concat(broadcastIPsFromFile)
@@ -72,30 +86,6 @@ namespace wol
                 return 12;
             }
         }
-
-        private static IEnumerable<IPAddress> ParseCIDRs(IEnumerable<string> CIDRs, Action<string> OnParseError)
-        {
-            foreach (string cidr in CIDRs)
-            {
-                IPAddress broadcast = null;
-
-                try
-                {
-                    var network = IPNetwork.Parse(cidr);
-                    broadcast = network.Broadcast;
-                }
-                catch (Exception ex)
-                {
-                    Console.Error.WriteLine($"");
-                }
-
-                if (broadcast != null)
-                {
-                    yield return broadcast;
-                }
-            }
-        }
-
         private static void CreateSockets(in List<IPEndPoint> IPs, out UdpClient v4Socket, out UdpClient v6Socket, bool verbose)
         {
             Func<AddressFamily,UdpClient> createSocket = (AddressFamily family) =>
@@ -129,25 +119,6 @@ namespace wol
                 v6Socket = createSocket(AddressFamily.InterNetworkV6);
             }
         }
-
-        private static void WriteStats(Stats stats, int numberSubnetIPs, TimeSpan duration)
-        {
-            long onePacketSize = 6 + 6 * 16;
-            long bytesSent = onePacketSize * stats.sentPackets;
-
-            string packetPerS = duration.TotalSeconds == 0 ? "n/a" : ((double)stats.sentPackets / duration.TotalSeconds).ToString();
-
-            Console.WriteLine(
-                $"\nnumber MAC addresses: {stats.numberMACs}"
-              + $"\nnumber subnet IPs:    {numberSubnetIPs}"
-              + $"\nWOL packets sent:     {stats.sentPackets}"
-              + $"\npayload sent:         {Spi.Misc.StrFormatByteSize(bytesSent)}"
-              + $"\npacket/s:             {packetPerS}"
-              + $"\nduration:             {Misc.NiceDuration(duration)}"  
-              + $"\nerrors:               {stats.errors}"
-              );
-        }
-
         private static void SendToAllNets(Opts opts, Stats stats, IEnumerable<byte[]> MACs, List<IPEndPoint> broadcastIPs, UdpClient v4Socket, UdpClient v6Socket)
         {
             byte[] buffer = new byte[6 + 16 * 6];
@@ -202,7 +173,6 @@ namespace wol
                 Console.Error.WriteLine(ioex.Message);
             }
         }
-
         private static UdpClient GetSocketForAdressFamily(UdpClient v4Socket, UdpClient v6Socket, IPEndPoint broadcastIP)
         {
             UdpClient socketToUse = null;
@@ -217,61 +187,23 @@ namespace wol
 
             return socketToUse;
         }
-
-        private static IEnumerable<IPAddress> ParseIPs(IEnumerable<string> IPs, Action<string> OnParseError)
+        private static void WriteStats(Stats stats, int numberSubnetIPs, TimeSpan duration)
         {
-            foreach (string stringIP in IPs)
-            {
-                IPAddress ip = null;
-                try
-                {
-                    ip = IPAddress.Parse(stringIP);
-                }
-                catch (FormatException fex)
-                {
-                    Console.Error.WriteLine($"E: IP [{stringIP}] could not be parsed. [{fex.Message}]");
-                }
-                if (ip != null)
-                {
-                    yield return ip;
-                }
-                else
-                {
-                    OnParseError?.Invoke(stringIP);
-                }
-            }
-        }
-        private static IEnumerable<byte[]> ParseMACs(IEnumerable<string> stringMACs, Action<string> OnParseError)
-        {
-            foreach ( string stringMAC in stringMACs)
-            {
-                byte[] parsedMAC = null;
+            long onePacketSize = 6 + 6 * 16;
+            long bytesSent = onePacketSize * stats.sentPackets;
 
-                string tmpMAC = stringMAC.ToUpper().Replace(":", "-");
-                try
-                {
-                    parsedMAC = PhysicalAddress.Parse(tmpMAC).GetAddressBytes();
-                    if (parsedMAC.Length != 6)
-                    {
-                        Console.Error.WriteLine($"E: MAC [{stringMAC}] has a length of {parsedMAC.Length}. Should be 6.");
-                        parsedMAC = null;
-                    }
-                }
-                catch (FormatException fex)
-                {
-                    Console.Error.WriteLine($"E: MAC [{stringMAC}] could not be parsed. Was transformed to [{tmpMAC}]. Exception: {fex.Message}");
-                    parsedMAC = null;
-                }
+            string packetPerS = duration.TotalSeconds == 0 ? "n/a" : ((double)stats.sentPackets / duration.TotalSeconds).ToString();
 
-                if ( parsedMAC != null )
-                {
-                    yield return parsedMAC;
-                }
-                else
-                {
-                    OnParseError?.Invoke(stringMAC);
-                }
-            }
+            Console.WriteLine(
+                $"\nnumber MAC addresses: {stats.numberMACs}"
+              + $"\nnumber subnet IPs:    {numberSubnetIPs}"
+              + $"\nWOL packets sent:     {stats.sentPackets}"
+              + $"\npayload sent:         {Spi.Misc.StrFormatByteSize(bytesSent)}"
+              + $"\npacket/s:             {packetPerS}"
+              + $"\nduration:             {Misc.NiceDuration(duration)}"
+              + $"\nerrors:               {stats.errors}"
+              );
         }
+
     }
 }

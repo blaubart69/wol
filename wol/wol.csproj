@@ -41,6 +41,7 @@
     <Compile Include="BeeOptLong.cs" />
     <Compile Include="Misc.cs" />
     <Compile Include="Opts.cs" />
+    <Compile Include="Parse.cs" />
     <Compile Include="Program.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
   </ItemGroup>
