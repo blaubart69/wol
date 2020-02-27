@@ -22,39 +22,60 @@ namespace wol
         const int WOL_UDP_PORT = 7;
         static int Main(string[] args)
         {
-            Opts opts;
-            if (!Opts.ParseOpts(args, out opts))
+            try
             {
-                return 99;
+                Opts opts;
+                if (!Opts.ParseOpts(args, out opts))
+                {
+                    return 99;
+                }
+
+                Stats stats = new Stats();
+
+                IEnumerable<byte[]> MACs = ParseMACs(Misc.ConcatFilecontentAndOneValue(opts.MAC, opts.FilenameMacAddresses),
+                                                                    OnParseError: (string MAC) => stats.errors++);
+
+                List<IPEndPoint> broadcastIPs = ParseIPs(Misc.ConcatFilecontentAndOneValue(opts.broadcastIP, opts.FilenameBroadcastIPs),
+                                                                    OnParseError: (string IP) => stats.errors++)
+                                                      .Select(ip => new IPEndPoint(ip, WOL_UDP_PORT)).ToList();
+
+                if (opts.verbose)
+                {
+                    Console.WriteLine($"sending each MAC to {broadcastIPs.Count} IPs");
+                }
+
+                DateTime start = DateTime.Now;
+                SendToAllNets(opts, stats, MACs, broadcastIPs);
+                TimeSpan duration = DateTime.Now - start;
+
+                WriteStats(stats, broadcastIPs.Count, duration);
+
+                return stats.errors == 0 ? 0 : 8;
             }
-
-            Stats stats = new Stats();
-
-            IEnumerable<byte[]> MACs            = ParseMACs( Misc.ConcatFilecontentAndOneValue(opts.MAC, opts.FilenameMacAddresses),
-                                                                OnParseError: (string MAC) => stats.errors++ );
-
-            List<IPEndPoint>    broadcastIPs    = ParseIPs ( Misc.ConcatFilecontentAndOneValue(opts.broadcastIP, opts.FilenameBroadcastIPs),
-                                                                OnParseError: (string IP) => stats.errors++)
-                                                  .Select(ip => new IPEndPoint(ip, WOL_UDP_PORT)).ToList();
-            
-            if (opts.verbose)
+            catch (Exception ex)
             {
-                Console.WriteLine($"sending each MAC to {broadcastIPs.Count} IPs");
+                Console.Error.WriteLine(ex.Message);
+                Console.Error.WriteLine(ex.StackTrace);
+                return 12;
             }
-            
-            SendToAllNets(opts, stats, MACs, broadcastIPs);
-            WriteStats(stats);
-            return stats.errors == 0 ? 0 : 8;
         }
 
-        private static void WriteStats(Stats stats)
+        private static void WriteStats(Stats stats, int numberSubnetIPs, TimeSpan duration)
         {
             long onePacketSize = 6 + 6 * 16;
             long bytesSent = onePacketSize * stats.sentPackets;
+
+            string packetPerS = duration.TotalSeconds == 0 ? "n/a" : ((double)stats.sentPackets / duration.TotalSeconds).ToString();
+
             Console.WriteLine(
-                $"sent {stats.sentPackets} WOL packets for {stats.numberMACs} MACs."
-              + $" size all packets: {Spi.Misc.StrFormatByteSize(bytesSent)}"
-              + $" errors: {stats.errors}");
+                $"\nnumber MAC addresses: {stats.numberMACs}"
+              + $"\nnumber subnet IPs:    {numberSubnetIPs}"
+              + $"\nWOL packets sent:     {stats.sentPackets}"
+              + $"\npayload sent:         {Spi.Misc.StrFormatByteSize(bytesSent)}"
+              + $"\npacket/s:             {packetPerS}"
+              + $"\nduration:             {Misc.NiceDuration(duration)}"  
+              + $"\nerrors:               {stats.errors}"
+              );
         }
 
         private static void SendToAllNets(Opts opts, Stats stats, IEnumerable<byte[]> MACs, List<IPEndPoint> broadcastIPs)
