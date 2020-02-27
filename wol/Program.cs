@@ -44,9 +44,14 @@ namespace wol
                     Console.WriteLine($"sending each MAC to {broadcastIPs.Count} IPs");
                 }
 
+                CreateSockets(broadcastIPs, out UdpClient v4Socket, out UdpClient v6Socket, opts.verbose);
+
                 DateTime start = DateTime.Now;
-                SendToAllNets(opts, stats, MACs, broadcastIPs);
+                SendToAllNets(opts, stats, MACs, broadcastIPs, v4Socket, v6Socket);
                 TimeSpan duration = DateTime.Now - start;
+
+                if (v4Socket != null) v4Socket.Close();
+                if (v6Socket != null) v6Socket.Close();
 
                 WriteStats(stats, broadcastIPs.Count, duration);
 
@@ -57,6 +62,40 @@ namespace wol
                 Console.Error.WriteLine(ex.Message);
                 Console.Error.WriteLine(ex.StackTrace);
                 return 12;
+            }
+        }
+
+        private static void CreateSockets(in List<IPEndPoint> IPs, out UdpClient v4Socket, out UdpClient v6Socket, bool verbose)
+        {
+            Func<AddressFamily,UdpClient> createSocket = (AddressFamily family) =>
+            {
+                try
+                {
+                    var socket = new UdpClient(family);
+                    if (verbose)
+                    {
+                        Console.WriteLine($"socket for family {family} created");
+                    }
+                    return socket;
+                }
+                catch (Exception ex)
+                {
+                    Console.Error.WriteLine($"could not create socket for AddressFamily {family}. [{ex.Message}]");
+                }
+                return null;
+            };
+
+            v4Socket = null;
+            v6Socket = null;
+
+            if (IPs.Any(ip => ip.AddressFamily == AddressFamily.InterNetwork))
+            {
+                v4Socket = createSocket(AddressFamily.InterNetwork);   
+            }
+
+            if (IPs.Any(ip => ip.AddressFamily == AddressFamily.InterNetworkV6))
+            {
+                v6Socket = createSocket(AddressFamily.InterNetworkV6);
             }
         }
 
@@ -78,35 +117,59 @@ namespace wol
               );
         }
 
-        private static void SendToAllNets(Opts opts, Stats stats, IEnumerable<byte[]> MACs, List<IPEndPoint> broadcastIPs)
+        private static void SendToAllNets(Opts opts, Stats stats, IEnumerable<byte[]> MACs, List<IPEndPoint> broadcastIPs, UdpClient v4Socket, UdpClient v6Socket)
         {
-            using (UdpClient udpClient = new UdpClient())
-            {
-                byte[] buffer = new byte[6 + 16 * 6];
+            byte[] buffer = new byte[6 + 16 * 6];
 
-                for (int i = 0; i < 6; ++i)
+            for (int i = 0; i < 6; ++i)
+            {
+                buffer[i] = 0xFF;
+            }
+
+            foreach (byte[] mac in MACs)
+            {
+                stats.numberMACs += 1;
+
+                // MAC addresses are 6-byte (48-bits) in length
+                foreach (var broadcastIP in broadcastIPs)
                 {
-                    buffer[i] = 0xFF;
+                    for (int i = 0; i < 16; i++)
+                    {
+                        mac.CopyTo(buffer, 6 + i * 6);
+                    }
+                    UdpClient socketToUse = null;
+                    if (broadcastIP.AddressFamily == AddressFamily.InterNetwork && v4Socket != null)
+                    {
+                        socketToUse = v4Socket;
+                    }
+                    else if (broadcastIP.AddressFamily == AddressFamily.InterNetworkV6 && v6Socket != null) 
+                    {
+                        socketToUse = v6Socket;
+                    }
+
+                    if (socketToUse != null)
+                    {
+                        try
+                        {
+                            socketToUse.Send(buffer, buffer.Length, broadcastIP);
+                            ++stats.sentPackets;
+                        }
+                        catch (SocketException sox)
+                        {
+                            ++stats.errors;
+                            Console.Error.WriteLine(sox.Message);
+                        }
+                        catch (InvalidOperationException ioex)
+                        {
+                            ++stats.errors;
+                            Console.Error.WriteLine(ioex.Message);
+                        }
+                    }
                 }
 
-                foreach (byte[] mac in MACs)
+                if (opts.verbose)
                 {
-                    // MAC addresses are 6-byte (48-bits) in length
-                    foreach (var broadcastIP in broadcastIPs)
-                    {
-                        for (int i = 0; i < 16; i++)
-                        {
-                            mac.CopyTo(buffer, 6 + i * 6);
-                        }
-                        udpClient.Send(buffer, buffer.Length, broadcastIP);
-                    }
-                    stats.sentPackets += broadcastIPs.Count;
-                    stats.numberMACs += 1;
-
-                    if (opts.verbose)
-                    {
-                        Console.WriteLine(BitConverter.ToString(mac));
-                    }
+                    Console.WriteLine(BitConverter.ToString(mac));
                 }
             }
         }
