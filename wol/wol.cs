@@ -8,12 +8,15 @@ namespace wol
 {
     class wol
     {
-        public delegate void OnSendSuccessfull(in byte[] mac, in IPEndPoint target);
-        public delegate void OnSendError      (in byte[] mac, in IPEndPoint target, in string message);
+        public delegate void OnSendSuccessfull(in IPAddress target);
+        public delegate void OnSendError      (in IPAddress target, in string message);
 
-        public static int SendToAllNets(IEnumerable<byte[]> MACs, IList<IPEndPoint> broadcastIPs, 
-                            UdpClient v4Socket, UdpClient v6Socket,
-                            OnSendSuccessfull onSendSuccessfull, OnSendError onSendError)
+        public static int SendEachMacToAllNets(
+                            in IEnumerable<byte[]>              MACs, 
+                            in IReadOnlyCollection<IPAddress>   broadcastIPs, 
+                            int port,
+                            in UdpClient v4Socket, in UdpClient v6Socket,
+                            in OnSendSuccessfull onSendSuccessfull, in OnSendError onSendError)
         {
             byte[] buffer = new byte[6 + 16 * 6];
 
@@ -21,6 +24,8 @@ namespace wol
             {
                 buffer[i] = 0xFF;
             }
+
+            IReadOnlyCollection<IPEndPoint> targets = broadcastIPs.Select(ip => new IPEndPoint(ip, port)).ToList();
 
             int numberMacs = 0;
 
@@ -35,36 +40,36 @@ namespace wol
                     mac.CopyTo(buffer, 6 + i * 6);
                 }
 
-                foreach (IPEndPoint broadcastIP in broadcastIPs)
+                foreach (IPEndPoint broadcastIP in targets)
                 {
-                    UdpClient socketToUse = GetSocketForAddressFamily(v4Socket, v6Socket, broadcastIP);
+                    UdpClient socketToUse = GetSocketForAddressFamily(v4Socket, v6Socket, broadcastIP.AddressFamily);
 
                     if (socketToUse != null)
                     {
                         if ( SendWOLpacket(buffer, broadcastIP, socketToUse, out string error))
                         {
-                            onSendSuccessfull?.Invoke(mac, broadcastIP);
+                            onSendSuccessfull?.Invoke(broadcastIP.Address);
                         }
                         else
                         {
-                            onSendError?.Invoke(mac, broadcastIP, error);
+                            onSendError?.Invoke(broadcastIP.Address, error);
                         }
                     }
                     else
                     {
-                        onSendError?.Invoke(mac, broadcastIP, $"no socket available for address/family {broadcastIP.Address}/{broadcastIP.AddressFamily}");
+                        onSendError?.Invoke(broadcastIP.Address, $"no socket available for address/family {broadcastIP.Address}/{broadcastIP.AddressFamily}");
                     }
                 }
             }
 
             return numberMacs;
         }
-        private static bool SendWOLpacket(byte[] buffer, IPEndPoint broadcastIP, UdpClient socketToUse, out string error)
+        private static bool SendWOLpacket(in byte[] buffer, in IPEndPoint target, in UdpClient socketToUse, out string error)
         {
             try
             {
                 error = null;
-                socketToUse.Send(buffer, buffer.Length, broadcastIP);
+                socketToUse.Send(buffer, buffer.Length, target );
                 return true;
             }
             catch (SocketException sox)
@@ -78,14 +83,14 @@ namespace wol
 
             return false;
         }
-        private static UdpClient GetSocketForAddressFamily(UdpClient v4Socket, UdpClient v6Socket, IPEndPoint broadcastIP)
+        private static UdpClient GetSocketForAddressFamily(in UdpClient v4Socket, in UdpClient v6Socket, in AddressFamily family)
         {
             UdpClient socketToUse = null;
-            if (broadcastIP.AddressFamily == AddressFamily.InterNetwork && v4Socket != null)
+            if (family == AddressFamily.InterNetwork && v4Socket != null)
             {
                 socketToUse = v4Socket;
             }
-            else if (broadcastIP.AddressFamily == AddressFamily.InterNetworkV6 && v6Socket != null)
+            else if (family == AddressFamily.InterNetworkV6 && v6Socket != null)
             {
                 socketToUse = v6Socket;
             }

@@ -53,8 +53,7 @@ namespace wol
                             Console.Error.WriteLine($"could not parse IP [{IP}]. [{message}]");
                         });
 
-                List<IPEndPoint> broadcastEndpoints = broadcastIPsFromCidrs.Concat(broadcastIPsFromFile)
-                    .Select(ip => new IPEndPoint(ip, WOL_UDP_PORT)).ToList();
+                IReadOnlyList<IPAddress> broadcastEndpoints = broadcastIPsFromCidrs.Concat(broadcastIPsFromFile).ToList();
 
                 if (opts.verbose)
                 {
@@ -69,9 +68,9 @@ namespace wol
 
                 DateTime start = DateTime.Now;
                 stats.numberMACs =
-                    wol.SendToAllNets(MACs, broadcastEndpoints, v4Socket, v6Socket,
-                    onSendSuccessfull: (in byte[] mac, in IPEndPoint target)                  => { ++stats.sentPackets; },
-                    onSendError:       (in byte[] mac, in IPEndPoint target, in string error) => { ++stats.errors; Console.Error.WriteLine($"error sending to {target}\t[{error}]"); });
+                    wol.SendEachMacToAllNets(MACs, broadcastEndpoints, WOL_UDP_PORT, v4Socket, v6Socket,
+                    onSendSuccessfull: (in IPAddress target)                  => { ++stats.sentPackets; },
+                    onSendError:       (in IPAddress target, in string error) => { ++stats.errors; Console.Error.WriteLine($"error sending to {target}\t[{error}]"); });
                 TimeSpan duration = DateTime.Now - start;
 
                 if (v4Socket != null) v4Socket.Close();
@@ -88,7 +87,7 @@ namespace wol
                 return 12;
             }
         }
-        private static void CreateSockets(in List<IPEndPoint> IPs, out UdpClient v4Socket, out UdpClient v6Socket, bool verbose)
+        private static void CreateSockets(in IReadOnlyList<IPAddress> IPs, out UdpClient v4Socket, out UdpClient v6Socket, bool verbose)
         {
             Func<AddressFamily,UdpClient> createSocket = (AddressFamily family) =>
             {
