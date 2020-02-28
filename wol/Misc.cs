@@ -46,39 +46,28 @@ namespace Spi
                 }
             }
         }
-        public static string NiceDuration(TimeSpan ts)
+        public static string NiceDuration(TimeSpan duration)
         {
-            StringBuilder res = new StringBuilder(capacity: 32);
+            string nice = String.Empty;
 
-            if (ts.TotalHours >= 24)
+            if (duration.Ticks >= TimeSpan.TicksPerDay)
             {
-                //res = String.Format("{0}d {1}h {2}m {3}s {4}ms", ts.Days, ts.Hours, ts.Minutes, ts.Seconds, ts.Milliseconds);
-                res.Append(ts.Days);
-                res.Append("d ");
+                nice += duration.Days + "d ";
             }
-            if (ts.TotalMinutes >= 60)
+            if (duration.Ticks >= TimeSpan.TicksPerHour)
             {
-                res.Append(ts.Hours);
-                res.Append("h ");
-                //res = String.Format("{0}h {1}m {2}s {3}ms", ts.Hours, ts.Minutes, ts.Seconds, ts.Milliseconds);
+                nice += duration.Hours + "h ";
             }
-            if (ts.TotalSeconds >= 60)
+            if (duration.Ticks >= TimeSpan.TicksPerMinute)
             {
-                res.Append(ts.Minutes);
-                res.Append("m ");
-                //res = String.Format("{0}m {1}s {2}ms", ts.Minutes, ts.Seconds, ts.Milliseconds);
+                nice += duration.Minutes + "m ";
             }
-            if (ts.TotalMilliseconds >= 1000)
+            if (duration.Ticks >= TimeSpan.TicksPerSecond)
             {
-                res.Append(ts.Seconds);
-                res.Append("s ");
-                //res = String.Format("{0}s {1}ms", ts.Seconds, ts.Milliseconds);
+                nice += duration.Seconds + "s ";
             }
-            //res = String.Format("{0}ms", ts.Milliseconds);
-            res.Append(ts.Milliseconds);
-            res.Append("ms");
 
-            return res.ToString();
+            return nice + duration.Milliseconds + "ms";
         }
     }
 }
