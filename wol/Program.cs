@@ -125,12 +125,12 @@ namespace wol
             long onePacketSize = 6 + 6 * 16;
             long bytesSent = onePacketSize * stats.sentPackets;
 
-            string packetPerS = duration.TotalSeconds == 0 ? "n/a" : ((double)stats.sentPackets / duration.TotalSeconds).ToString();
+            string packetPerS = duration.TotalSeconds == 0 ? "n/a" : ((double)stats.sentPackets / duration.TotalSeconds).ToString("N2");
 
             Console.WriteLine(
-                $"\nnumber MAC addresses: {stats.numberMACs}"
-              + $"\nnumber subnet IPs:    {numberSubnetIPs}"
-              + $"\nWOL packets sent:     {stats.sentPackets}"
+                $"\nnumber MAC addresses: {stats.numberMACs.ToString("N0")}"
+              + $"\nnumber subnet IPs:    {numberSubnetIPs.ToString("N0")}"
+              + $"\nWOL packets sent:     {stats.sentPackets.ToString("N0")}"
               + $"\npayload sent:         {Spi.Misc.StrFormatByteSize(bytesSent)}"
               + $"\npacket/s:             {packetPerS}"
               + $"\nduration:             {Misc.NiceDuration(duration)}"
