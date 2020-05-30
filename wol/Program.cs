@@ -96,13 +96,13 @@ namespace wol
                     var socket = new UdpClient(family);
                     if (verbose)
                     {
-                        Console.WriteLine($"socket for family {family} created");
+                        Console.WriteLine($"socket created for family: {family}");
                     }
                     return socket;
                 }
                 catch (Exception ex)
                 {
-                    Console.Error.WriteLine($"could not create socket for AddressFamily {family}. [{ex.Message}]");
+                    Console.Error.WriteLine($"could not create socket for AddressFamily: {family}. [{ex.Message}]");
                 }
                 return null;
             };

@@ -57,14 +57,21 @@ namespace wol
         }
         public static IEnumerable<IPAddress> CIDRs(IEnumerable<string> CIDRs, OnParseError onParseError)
         {
+            char[] CIDRsplit = new char[] { '/' };
             foreach (string cidr in CIDRs)
             {
                 IPAddress broadcast = null;
 
                 try
                 {
-                    var network = IPNetwork.Parse(cidr);
-                    broadcast = network.Broadcast;
+                    string[] cidrParts = cidr.Split(CIDRsplit);
+                    if ( cidrParts.Length != 2)
+                    {
+                        throw new Exception($"CIDR split by / gave {cidrParts.Length}. should be 2.");
+                    }
+                    IPAddress net = IPAddress.Parse(cidrParts[0]);
+                    int netBits = Int32.Parse(cidrParts[1]);
+                    broadcast = NetMisc.Broadcast(net, netBits);
                 }
                 catch (Exception ex)
                 {

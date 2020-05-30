@@ -36,13 +36,11 @@
   </PropertyGroup>
   <ItemGroup>
     <Reference Include="System" />
-    <Reference Include="System.Net.IPNetwork, Version=2.4.0.187, Culture=neutral, PublicKeyToken=717343cc2c25edcf, processorArchitecture=MSIL">
-      <HintPath>..\packages\IPNetwork2.2.4.0.187\lib\net40\System.Net.IPNetwork.dll</HintPath>
-    </Reference>
   </ItemGroup>
   <ItemGroup>
     <Compile Include="BeeOptLong.cs" />
     <Compile Include="Misc.cs" />
+    <Compile Include="NetMisc.cs" />
     <Compile Include="Opts.cs" />
     <Compile Include="Parse.cs" />
     <Compile Include="Program.cs" />
@@ -51,10 +49,6 @@
   </ItemGroup>
   <ItemGroup>
     <None Include="app.config" />
-    <None Include="packages.config" />
-  </ItemGroup>
-  <ItemGroup>
-    <Content Include="LICENSE_ lduchosal_IPNetwork.txt" />
   </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
 </Project>
