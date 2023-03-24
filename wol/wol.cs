@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Net;
 using System.Net.Sockets;
+using System.Text;
 
 namespace wol
 {
@@ -69,10 +70,15 @@ namespace wol
             try
             {
                 error = null;
-                socketToUse.Send(buffer, buffer.Length, target );
+                int bytesSent = socketToUse.Send(buffer, buffer.Length, target );
+                if ( bytesSent < buffer.Length ) 
+                {
+                    Console.WriteLine($"E: sent only {bytesSent} out of {buffer.Length} from socket {socketToUse.Client.LocalEndPoint} to {target}");
+                    return false;
+                }
                 if (verbose)
                 {
-                    Console.WriteLine($"I: sent from socket {socketToUse.Client.LocalEndPoint} to {target}");
+                    Console.WriteLine($"I: sent {bytesSent} bytes from socket {socketToUse.Client.LocalEndPoint} to {target}");
                 }
                 return true;
             }
