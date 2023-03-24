@@ -16,7 +16,8 @@ namespace wol
                             in IReadOnlyCollection<IPAddress>   broadcastIPs, 
                             int port,
                             in UdpClient v4Socket, in UdpClient v6Socket,
-                            in OnSendSuccessfull onSendSuccessfull, in OnSendError onSendError)
+                            in OnSendSuccessfull onSendSuccessfull, in OnSendError onSendError,
+                            bool verbose)
         {
             byte[] buffer = new byte[6 + 16 * 6];
 
@@ -27,12 +28,10 @@ namespace wol
 
             IReadOnlyCollection<IPEndPoint> targets = broadcastIPs.Select(ip => new IPEndPoint(ip, port)).ToList();
 
-            int numberMacs = 0;
+            int numberMacsSent = 0;
 
             foreach (byte[] mac in MACs)
             {
-                ++numberMacs;
-
                 // copy MAC address 16times to the buffer. offset 6!
                 // MAC addresses are 6-byte (48-bits) in length
                 for (int i = 0; i < 16; i++)
@@ -46,9 +45,10 @@ namespace wol
 
                     if (socketToUse != null)
                     {
-                        if ( SendWOLpacket(buffer, broadcastIP, socketToUse, out string error))
+                        if ( SendWOLpacket(buffer, broadcastIP, socketToUse, out string error, verbose))
                         {
                             onSendSuccessfull?.Invoke(broadcastIP.Address);
+                            ++numberMacsSent;
                         }
                         else
                         {
@@ -62,19 +62,24 @@ namespace wol
                 }
             }
 
-            return numberMacs;
+            return numberMacsSent;
         }
-        private static bool SendWOLpacket(in byte[] buffer, in IPEndPoint target, in UdpClient socketToUse, out string error)
+        private static bool SendWOLpacket(in byte[] buffer, in IPEndPoint target, in UdpClient socketToUse, out string error, bool verbose)
         {
             try
             {
                 error = null;
                 socketToUse.Send(buffer, buffer.Length, target );
+                if (verbose)
+                {
+                    Console.WriteLine($"I: sent from socket {socketToUse.Client.LocalEndPoint} to {target}");
+                }
                 return true;
             }
             catch (SocketException sox)
             {
                 error = sox.Message;
+                Console.WriteLine($"E: sent from socket {socketToUse.Client.LocalEndPoint} to {target}. {sox.Message}");
             }
             catch (InvalidOperationException ioex)
             {

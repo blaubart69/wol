@@ -49,7 +49,7 @@ namespace wol
                 tmpOpts.broadcastIP = "255.255.255.255";
                 if (tmpOpts.verbose)
                 {
-                    Console.WriteLine($"setting broadcast IP to {tmpOpts.broadcastIP}");
+                    Console.WriteLine($"setting broadcast IP to {tmpOpts.broadcastIP} because no other options was specified");
                 }
             }
 

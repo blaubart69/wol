@@ -16,7 +16,7 @@ namespace wol
     }
     class Program
     {
-        const int WOL_UDP_PORT = 7;
+        const int WOL_UDP_PORT = 9;
         static int Main(string[] args)
         {
             try
@@ -70,7 +70,8 @@ namespace wol
                 stats.numberMACs =
                     wol.SendEachMacToAllNets(MACs, broadcastEndpoints, WOL_UDP_PORT, v4Socket, v6Socket,
                     onSendSuccessfull: (in IPAddress target)                  => { ++stats.sentPackets; },
-                    onSendError:       (in IPAddress target, in string error) => { ++stats.errors; Console.Error.WriteLine($"error sending to {target}\t[{error}]"); });
+                    onSendError:       (in IPAddress target, in string error) => { ++stats.errors; Console.Error.WriteLine($"error sending to {target}\t[{error}]"); }
+                    , opts.verbose);
                 TimeSpan duration = DateTime.Now - start;
 
                 if (v4Socket != null) v4Socket.Close();
