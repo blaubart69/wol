@@ -13,7 +13,8 @@ namespace wol
         public string MAC;
         public string broadcastIP;
         public string cidr;
-        public bool verbose = false;
+        public bool   verbose = false;
+        public int    WOL_UDP_port = 9;
 
         private Opts()
         {
@@ -32,6 +33,7 @@ namespace wol
                 .Add(null, "broadcastfile", OPTTYPE.VALUE, "input file with subnet broadcast IPs", o => tmpOpts.FilenameBroadcastIPs = o)
                 .Add('c',  "cidr",          OPTTYPE.VALUE, "CIDR of subnet", o => tmpOpts.cidr = o)
                 .Add(null, "cidrfile",      OPTTYPE.VALUE, "input file with CIDRs", o => tmpOpts.FilenameCIDRs = o)
+                .Add('p',  "port",          OPTTYPE.VALUE, "port to use", o => tmpOpts.WOL_UDP_port = Convert.ToInt32(o) )
                 .Add('v',  "verbose",       OPTTYPE.BOOL, "show some output", o => tmpOpts.verbose = true)
                 .Add('h',  "help",          OPTTYPE.BOOL, "show help", o => showhelp = true)
                 .GetOpts();
